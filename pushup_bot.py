@@ -9,6 +9,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
+    JobQueue,
 )
 
 # Загружаем конфиг из .env
@@ -139,7 +140,7 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
 # --- Запуск бота ---
 def main():
     init_db()
-    app = Application.builder().token(Config.TOKEN).build()
+    app = Application.builder().token(Config.TOKEN).job_queue(JobQueue()).build()
 
     # Обработчики
     app.add_handler(CommandHandler("start", start))
