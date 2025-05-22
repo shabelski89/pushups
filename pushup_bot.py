@@ -37,44 +37,22 @@ def init_db():
     with sqlite3.connect(Config.DB_NAME) as conn:
         cursor = conn.cursor()
         cursor.execute('''
-                       CREATE TABLE IF NOT EXISTS users
-                       (
-                           user_id
-                           INTEGER
-                           PRIMARY
-                           KEY,
-                           username
-                           TEXT,
-                           first_name
-                           TEXT,
-                           last_name
-                           TEXT
-                       )
-                       ''')
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                first_name TEXT,
+                last_name TEXT
+            )
+        ''')
         cursor.execute('''
-                       CREATE TABLE IF NOT EXISTS pushups
-                       (
-                           id
-                           INTEGER
-                           PRIMARY
-                           KEY
-                           AUTOINCREMENT,
-                           user_id
-                           INTEGER,
-                           date
-                           TEXT,
-                           count
-                           INTEGER,
-                           FOREIGN
-                           KEY
-                       (
-                           user_id
-                       ) REFERENCES users
-                       (
-                           user_id
-                       )
-                           )
-                       ''')
+            CREATE TABLE IF NOT EXISTS pushups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                date TEXT,
+                count INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+        ''')
         conn.commit()
 
 
