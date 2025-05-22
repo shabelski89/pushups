@@ -1,6 +1,8 @@
 import os
 import sqlite3
 from datetime import datetime
+from datetime import time
+import pytz
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -9,7 +11,6 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
-    JobQueue,
 )
 
 # Загружаем конфиг из .env
@@ -121,38 +122,91 @@ async def handle_pushups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Напоминания (асинхронные) ---
 async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(pytz.timezone('Europe/Moscow'))  # Укажите ваш часовой пояс
+    current_hour = now.hour
+
+    # Проверяем, что текущее время в нужном интервале (9-21)
+    if 9 <= current_hour < 21:
+        conn = sqlite3.connect(Config.DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users")
+        users = cursor.fetchall()
+
+        for (user_id,) in users:
+            today_pushups = get_today_pushups(user_id)
+            if today_pushups < Config.GOAL:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"⏰ Напоминание! Сегодня ты сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
+                )
+        conn.close()
+
+
+async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(Config.DB_NAME)
     cursor = conn.cursor()
     today = datetime.now().strftime("%Y-%m-%d")
 
-    cursor.execute("SELECT user_id FROM users")
-    users = cursor.fetchall()
+    # Получаем всех пользователей и их результаты
+    cursor.execute("""
+                   SELECT u.user_id, u.first_name, COALESCE(SUM(p.count), 0) as total
+                   FROM users u
+                            LEFT JOIN pushups p ON u.user_id = p.user_id AND p.date = ?
+                   GROUP BY u.user_id, u.first_name
+                   """, (today,))
 
-    for (user_id,) in users:
-        today_pushups = get_today_pushups(user_id)
-        if today_pushups < Config.GOAL:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"⏰ Напоминание! Сегодня ты сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
-            )
+    results = cursor.fetchall()
     conn.close()
+
+    # Формируем сообщение
+    achievers = []
+    underachievers = []
+
+    for user_id, first_name, total in results:
+        if total >= 100:
+            achievers.append(f"{first_name} - {total} ✅")
+        else:
+            underachievers.append(f"{first_name} - {total} ❌ (осталось {100 - total})")
+
+    report_message = "📊 *Итоги дня:*\n\n"
+
+    if achievers:
+        report_message += "*Молодцы!*\n" + "\n".join(achievers) + "\n\n"
+
+    if underachievers:
+        report_message += "*Нужно стараться больше:*\n" + "\n".join(underachievers)
+
+    # Отправляем отчет в чат (или каждому пользователю)
+    await context.bot.send_message(
+        chat_id=Config.GROUP_CHAT_ID,  # ID группового чата
+        text=report_message,
+        parse_mode="Markdown"
+    )
 
 # --- Запуск бота ---
 def main():
     init_db()
-    app = Application.builder().token(Config.TOKEN).job_queue(JobQueue()).build()
+    application = Application.builder().token(Config.TOKEN).build()
 
-    # Обработчики
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pushups))
+    # Обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pushups))
 
-    # Напоминания (каждые 2 часа)
-    HOUR_IN_SECONDS = 60 * 60 * 24
-    REMIND_HOURS = HOUR_IN_SECONDS * 2
-    job_queue = app.job_queue
-    job_queue.run_repeating(remind_pushups, interval=REMIND_HOURS, first=10)
+    # Напоминания каждые 2 часа (9:00-21:00)
+    job_queue = application.job_queue
+    job_queue.run_repeating(
+        remind_pushups,
+        interval=7200,
+        first=time(hour=9, minute=0, tzinfo=pytz.timezone('Europe/Moscow'))
+    )
 
-    app.run_polling()
+    # Ежедневный отчет в 22:00
+    job_queue.run_daily(
+        send_daily_report,
+        time(hour=22, minute=0, tzinfo=pytz.timezone('Europe/Moscow'))
+    )
+
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
