@@ -10,6 +10,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
+    JobQueue,
 )
 
 # Загружаем конфиг из .env
@@ -217,9 +218,7 @@ def main():
     init_db()
 
     # Создаем Application с JobQueue
-    application = Application.builder() \
-        .token(Config.TOKEN) \
-        .build()
+    application = Application.builder().token(Config.TOKEN).job_queue(JobQueue()).build()
 
     # Обработчики
     application.add_handler(CommandHandler("start", start))
@@ -228,8 +227,8 @@ def main():
     # Напоминания каждые 2 часа (9:00-21:00)
     application.job_queue.run_repeating(
         callback=remind_pushups,
-        interval=7200,  # 2 часа в секундах
-        first=10,  # Первый запуск через 10 секунд
+        interval=7200,
+        first=10,
     )
 
     # Ежедневный отчет в 22:00
