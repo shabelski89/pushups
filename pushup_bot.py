@@ -217,6 +217,7 @@ def main():
 
     # Обработчики
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("report", report_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pushups))
 
     # Напоминания каждые 2 часа (9:00-21:00)
