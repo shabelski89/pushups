@@ -148,15 +148,20 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Ежедневный отчет ---
-async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
+async def generate_report(chat_id: int = None) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
     with sqlite3.connect(Config.DB_NAME) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-                       SELECT u.user_id, u.first_name, COALESCE(SUM(p.count), 0) as total
+                       SELECT 
+                           u.user_id, 
+                           u.first_name, 
+                           COALESCE(SUM(p.count), 0) as total
                        FROM users u
-                                LEFT JOIN pushups p ON u.user_id = p.user_id AND p.date = ?
-                       GROUP BY u.user_id, u.first_name
+                       LEFT JOIN pushups p ON u.user_id = p.user_id AND p.date = ?
+                       GROUP BY 
+                           u.user_id, 
+                           u.first_name
                        """, (today,))
         results = cursor.fetchall()
 
@@ -169,7 +174,7 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
         else:
             underachievers.append(f"{first_name} - {total} ❌ (осталось {Config.GOAL - total})")
 
-    report_message = "📊 *Итоги дня:*\n\n"
+    report_message = "📊 *Текущий прогресс:*\n\n"
 
     if achievers:
         report_message += "*Молодцы!*\n" + "\n".join(achievers) + "\n\n"
@@ -177,16 +182,28 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     if underachievers:
         report_message += "*Нужно стараться больше:*\n" + "\n".join(underachievers)
 
+    return report_message
+
+
+async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /report"""
+    report = await generate_report()
+    await update.message.reply_text(report, parse_mode="Markdown")
+
+
+async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
+    """Автоматическая отправка отчета в 22:00"""
+    report = await generate_report()
     if Config.GROUP_CHAT_ID:
         await context.bot.send_message(
             chat_id=int(Config.GROUP_CHAT_ID),
-            text=report_message,
+            text=report.replace("Текущий", "Итоговый"),
             parse_mode="Markdown"
         )
     elif Config.ADMIN_USER_ID:
         await context.bot.send_message(
             chat_id=int(Config.ADMIN_USER_ID),
-            text="⚠️ GROUP_CHAT_ID не указан, отчет не отправлен в группу\n\n" + report_message,
+            text="⚠️ GROUP_CHAT_ID не указан\n\n" + report.replace("Текущий", "Итоговый"),
             parse_mode="Markdown"
         )
 
