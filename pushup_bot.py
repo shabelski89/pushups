@@ -200,7 +200,7 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
                         try:
                             await context.bot.send_message(
                                 chat_id=Config.GROUP_CHAT_ID,
-                                text=f"⏰ Напоминание! Сегодня {username} сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
+                                text=f"⏰ Напоминание! Сегодня @{username} сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
                             )
                         except Forbidden:
                             logger.warning(f"Не удалось отправить сообщение пользователю {user_id} (чат запрещен)")
