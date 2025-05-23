@@ -32,8 +32,8 @@ class Config:
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     DB_NAME = os.getenv("DB_NAME", "pushups.db")
     ADMIN_USER_ID = os.getenv("ADMIN_USER_ID")
-    GOAL = int(os.getenv("GOAL", 100))  # Цель по умолчанию 100
-    GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")  # Для ежедневного отчета
+    GOAL = int(os.getenv("GOAL", 100))
+    GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID"))
 
 
 if not Config.TOKEN:
@@ -162,7 +162,7 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
                     if today_pushups < Config.GOAL:
                         try:
                             await context.bot.send_message(
-                                chat_id=user_id,
+                                chat_id=Config.GROUP_CHAT_ID,
                                 text=f"⏰ Напоминание! Сегодня ты сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
                             )
                         except Forbidden:
@@ -173,7 +173,7 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Ошибка в remind_pushups: {e}")
 
 # --- Ежедневный отчет ---
-async def generate_report(chat_id: int = None) -> str:
+async def generate_report() -> str:
     today = datetime.now().strftime("%Y-%m-%d")
     with sqlite3.connect(Config.DB_NAME) as conn:
         cursor = conn.cursor()
@@ -212,6 +212,8 @@ async def generate_report(chat_id: int = None) -> str:
 
 async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /report"""
+    user = update.effective_user
+    add_user(user.id, user.username, user.first_name, user.last_name)
     report = await generate_report()
     await update.message.reply_text(report, parse_mode="Markdown")
 
@@ -222,7 +224,7 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
         if Config.GROUP_CHAT_ID:
             try:
                 await context.bot.send_message(
-                    chat_id=int(Config.GROUP_CHAT_ID),
+                    chat_id=Config.GROUP_CHAT_ID,
                     text=report.replace("Текущий", "Итоговый"),
                     parse_mode="Markdown"
                 )
@@ -230,13 +232,13 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
                 logger.error("Нет доступа к групповому чату")
                 if Config.ADMIN_USER_ID:
                     await context.bot.send_message(
-                        chat_id=int(Config.ADMIN_USER_ID),
+                        chat_id=Config.GROUP_CHAT_ID,
                         text="⚠️ Нет доступа к групповому чату для отправки отчета",
                         parse_mode="Markdown"
                     )
         elif Config.ADMIN_USER_ID:
             await context.bot.send_message(
-                chat_id=int(Config.ADMIN_USER_ID),
+                chat_id=Config.GROUP_CHAT_ID,
                 text="⚠️ GROUP_CHAT_ID не указан\n\n" + report.replace("Текущий", "Итоговый"),
                 parse_mode="Markdown"
             )
