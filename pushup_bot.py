@@ -180,6 +180,7 @@ async def add_pushups_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 # --- Напоминания ---
 async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
+    today = now.strftime("%Y-%m-%d")
     if 9 <= now.hour < 21:  # Только с 9:00 до 21:00
         try:
             with sqlite3.connect(Config.DB_NAME) as conn:
@@ -187,10 +188,18 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
                 # Получаем только пользователей, которые начали диалог с ботом
                 cursor.execute("""
                     SELECT 
-                        DISTINCT u.user_id,
-                        u.username
+                        u.user_id,
+                        u.first_name,
+                        u.username,
+                        COALESCE(SUM(p.count), 0) AS total
                     FROM users u
-                """)
+                    LEFT JOIN pushups p ON 
+                        p.user_id = u.user_id AND 
+                        p.date = ?
+                    GROUP BY u.user_id
+                    HAVING total < ?
+                    ORDER BY total DESC
+                """,(today,Config.GOAL))
                 users = cursor.fetchall()
 
                 for user_id, username in users:
