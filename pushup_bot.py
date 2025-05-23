@@ -115,8 +115,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_pushups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /add для добавления отжиманий"""
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
+
+    user = update.effective_user
+    add_user(user.id, user.username, user.first_name, user.last_name)
+    user_id = user.id
+    user_name = user.username
+
 
     # Проверяем, есть ли аргументы у команды
     if not context.args:
