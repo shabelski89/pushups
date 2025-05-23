@@ -187,7 +187,7 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
                 # Получаем только пользователей, которые начали диалог с ботом
                 cursor.execute("""
                     SELECT 
-                        u.user_id,
+                        DISTINCT u.user_id,
                         u.username
                     FROM users u
                     JOIN pushups p ON p.user_id = u.user_id
