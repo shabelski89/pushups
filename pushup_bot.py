@@ -12,6 +12,17 @@ from telegram.ext import (
     ContextTypes,
     JobQueue,
 )
+import logging
+from telegram.error import Forbidden
+
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
 
 # Загружаем конфиг из .env
 load_dotenv()
@@ -133,19 +144,33 @@ async def handle_pushups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
     if 9 <= now.hour < 21:  # Только с 9:00 до 21:00
-        with sqlite3.connect(Config.DB_NAME) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT user_id FROM users")
-            users = cursor.fetchall()
-
-            for (user_id,) in users:
-                today_pushups = get_today_pushups(user_id)
-                if today_pushups < Config.GOAL:
-                    await context.bot.send_message(
-                        chat_id=user_id,
-                        text=f"⏰ Напоминание! Сегодня ты сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
+        try:
+            with sqlite3.connect(Config.DB_NAME) as conn:
+                cursor = conn.cursor()
+                # Получаем только пользователей, которые начали диалог с ботом
+                cursor.execute("""
+                    SELECT u.user_id FROM users u
+                    WHERE EXISTS (
+                        SELECT 1 FROM pushups p 
+                        WHERE p.user_id = u.user_id
                     )
+                """)
+                users = cursor.fetchall()
 
+                for (user_id,) in users:
+                    today_pushups = get_today_pushups(user_id)
+                    if today_pushups < Config.GOAL:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text=f"⏰ Напоминание! Сегодня ты сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
+                            )
+                        except Forbidden:
+                            logger.warning(f"Не удалось отправить сообщение пользователю {user_id} (чат запрещен)")
+                        except Exception as e:
+                            logger.error(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка в remind_pushups: {e}")
 
 # --- Ежедневный отчет ---
 async def generate_report(chat_id: int = None) -> str:
@@ -192,20 +217,41 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
-    """Автоматическая отправка отчета в 22:00"""
-    report = await generate_report()
-    if Config.GROUP_CHAT_ID:
-        await context.bot.send_message(
-            chat_id=int(Config.GROUP_CHAT_ID),
-            text=report.replace("Текущий", "Итоговый"),
-            parse_mode="Markdown"
-        )
-    elif Config.ADMIN_USER_ID:
-        await context.bot.send_message(
-            chat_id=int(Config.ADMIN_USER_ID),
-            text="⚠️ GROUP_CHAT_ID не указан\n\n" + report.replace("Текущий", "Итоговый"),
-            parse_mode="Markdown"
-        )
+    try:
+        report = await generate_report()
+        if Config.GROUP_CHAT_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=int(Config.GROUP_CHAT_ID),
+                    text=report.replace("Текущий", "Итоговый"),
+                    parse_mode="Markdown"
+                )
+            except Forbidden:
+                logger.error("Нет доступа к групповому чату")
+                if Config.ADMIN_USER_ID:
+                    await context.bot.send_message(
+                        chat_id=int(Config.ADMIN_USER_ID),
+                        text="⚠️ Нет доступа к групповому чату для отправки отчета",
+                        parse_mode="Markdown"
+                    )
+        elif Config.ADMIN_USER_ID:
+            await context.bot.send_message(
+                chat_id=int(Config.ADMIN_USER_ID),
+                text="⚠️ GROUP_CHAT_ID не указан\n\n" + report.replace("Текущий", "Итоговый"),
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка в send_daily_report: {e}")
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Логируем ошибки"""
+    logger.error(msg="Исключение при обработке обновления:", exc_info=context.error)
+
+    if isinstance(context.error, Forbidden):
+        logger.warning(f"Боту запрещено писать пользователю")
+    elif isinstance(context.error, Exception):
+        logger.error(f"Необработанное исключение: {context.error}")
 
 
 # --- Запуск бота ---
@@ -216,6 +262,7 @@ def main():
     application = Application.builder().token(Config.TOKEN).job_queue(JobQueue()).build()
 
     # Обработчики
+    application.add_error_handler(error_handler)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("report", report_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pushups))
