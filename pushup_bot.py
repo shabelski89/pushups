@@ -190,7 +190,6 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
                         DISTINCT u.user_id,
                         u.username
                     FROM users u
-                    JOIN pushups p ON p.user_id = u.user_id
                 """)
                 users = cursor.fetchall()
 
