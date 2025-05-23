@@ -113,31 +113,64 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def handle_pushups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+async def add_pushups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /add для добавления отжиманий"""
     user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
 
-    try:
-        count = int("".join(filter(str.isdigit, text)))
-    except ValueError:
-        await update.message.reply_text("Не понял. Напиши число, например: «25»")
+    # Проверяем, есть ли аргументы у команды
+    if not context.args:
+        await update.message.reply_text(
+            "Используйте команду так: /add <количество>\n"
+            "Например: /add 25"
+        )
         return
 
+    message = ''
+    try:
+        # Парсим количество отжиманий
+        count = int(context.args[0])
+        if count <= 0:
+            message = "Некорректное количество. Введите целое положительное число.\nПример: /add 25"
+            raise ValueError
+        if count > Config.GOAL:
+            message = "Некорректное количество. Не пизди.\nПример: /add 25"
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text(message)
+        return
+
+    # Получаем текущий прогресс
     today_pushups = get_today_pushups(user_id)
     total = today_pushups + count
 
+    # Добавляем в базу данных
     add_pushups(user_id, count)
 
+    # Формируем ответ
     if total >= Config.GOAL:
-        await update.message.reply_text(
-            f"🔥 Отлично! Ты достиг {Config.GOAL} отжиманий за сегодня!\n"
-            f"Последние {count} — и ты молодец!"
+        message = (
+            f"🏆 {user_name}, ты выполнил дневную норму!\n"
+            f"Всего сегодня: {total} из {Config.GOAL} отжиманий\n"
+            f"Последние добавленные: {count}"
         )
     else:
-        await update.message.reply_text(
-            f"✅ Добавил {count} отжиманий. За сегодня: {total}/{Config.GOAL}.\n"
-            f"Осталось {Config.GOAL - total}!"
+        message = (
+            f"💪 {user_name}, хорошая работа!\n"
+            f"Добавлено: {count} отжиманий\n"
+            f"Прогресс: {total}/{Config.GOAL}\n"
+            f"Осталось: {Config.GOAL - total}"
         )
+
+    # Если это групповой чат, отправляем дополнительное уведомление
+    if str(update.message.chat.id) == Config.GROUP_CHAT_ID:
+        await context.bot.send_message(
+            chat_id=int(Config.GROUP_CHAT_ID),
+            text=f"@{update.effective_user.username} добавил {count} отжиманий!",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(message)
 
 
 # --- Напоминания ---
@@ -267,7 +300,7 @@ def main():
     application.add_error_handler(error_handler)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("report", report_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pushups))
+    application.add_handler(CommandHandler("add", add_pushups_command))
 
     # Напоминания каждые 2 часа (9:00-21:00)
     application.job_queue.run_repeating(
