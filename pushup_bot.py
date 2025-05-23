@@ -149,21 +149,22 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
                 cursor = conn.cursor()
                 # Получаем только пользователей, которые начали диалог с ботом
                 cursor.execute("""
-                    SELECT u.user_id FROM users u
-                    WHERE EXISTS (
-                        SELECT 1 FROM pushups p 
-                        WHERE p.user_id = u.user_id
+                    SELECT 
+                        u.user_id,
+                        u.username
+                    FROM users u
+                    JOIN pushups p ON p.user_id = u.user_id
                     )
                 """)
                 users = cursor.fetchall()
 
-                for (user_id,) in users:
+                for user_id, username in users:
                     today_pushups = get_today_pushups(user_id)
                     if today_pushups < Config.GOAL:
                         try:
                             await context.bot.send_message(
                                 chat_id=Config.GROUP_CHAT_ID,
-                                text=f"⏰ Напоминание! Сегодня ты сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
+                                text=f"⏰ Напоминание! Сегодня {username} сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
                             )
                         except Forbidden:
                             logger.warning(f"Не удалось отправить сообщение пользователю {user_id} (чат запрещен)")
