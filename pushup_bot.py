@@ -183,35 +183,34 @@ async def remind_pushups(context: ContextTypes.DEFAULT_TYPE):
         try:
             with sqlite3.connect(Config.DB_NAME) as conn:
                 cursor = conn.cursor()
-                # Получаем только пользователей, которые начали диалог с ботом
+                # Получаем пользователей, не выполнивших норму
                 cursor.execute("""
-                    SELECT 
-                        u.user_id,
-                        u.first_name,
-                        u.username,
-                        COALESCE(SUM(p.count), 0) AS total
-                    FROM users u
-                    LEFT JOIN pushups p ON 
-                        p.user_id = u.user_id AND 
-                        p.date = ?
-                    GROUP BY u.user_id
-                    HAVING total < ?
-                    ORDER BY total DESC
-                """,(today,Config.GOAL))
-                users = cursor.fetchall()
+                               SELECT u.user_id,
+                                      u.username,
+                                      COALESCE(SUM(p.count), 0) AS total
+                               FROM users u
+                                        LEFT JOIN pushups p ON
+                                   p.user_id = u.user_id AND
+                                   p.date = ?
+                               GROUP BY u.user_id
+                               HAVING total < ?
+                               ORDER BY total DESC
+                               """, (today, Config.GOAL))
 
-                for user_id, username in users:
-                    today_pushups = get_today_pushups(user_id)
-                    if today_pushups < Config.GOAL:
-                        try:
-                            await context.bot.send_message(
-                                chat_id=Config.GROUP_CHAT_ID,
-                                text=f"⏰ Напоминание! Сегодня @{username} сделал {today_pushups}/{Config.GOAL}. Давай, ещё немного!",
-                            )
-                        except Forbidden:
-                            logger.warning(f"Не удалось отправить сообщение пользователю {user_id} (чат запрещен)")
-                        except Exception as e:
-                            logger.error(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+                underachievers = []
+                for row in cursor.fetchall():
+                    user_id, username, total = row
+                    underachievers.append(f"@{username} - {total}/{Config.GOAL}")
+
+                if underachievers:
+                    message = "⏰ *Напоминание!*\nСледующие участники еще не выполнили норму:\n" + \
+                              "\n".join(underachievers)
+
+                    await context.bot.send_message(
+                        chat_id=Config.GROUP_CHAT_ID,
+                        text=message,
+                        parse_mode="Markdown"
+                    )
         except Exception as e:
             logger.error(f"Ошибка в remind_pushups: {e}")
 
