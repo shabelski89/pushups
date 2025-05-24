@@ -7,8 +7,6 @@ from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
-    filters,
     ContextTypes,
     JobQueue,
 )
@@ -324,8 +322,8 @@ def main():
     # Ежедневный отчет в 22:00
     application.job_queue.run_daily(
         callback=send_daily_report,
-        time=time(hour=22, minute=0),
-        days=tuple(range(7)),  # Все дни недели
+        time=time(hour=22, minute=0, tzinfo=TIMEZONE),
+        days=tuple(range(7)),
     )
 
     application.run_polling()
