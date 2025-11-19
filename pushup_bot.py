@@ -378,7 +378,7 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
                 logger.error("Нет доступа к групповому чату")
                 if Config.ADMIN_USER_ID:
                     await context.bot.send_message(
-                        chat_id=Config.GROUP_CHAT_ID,
+                        chat_id=Config.ADMIN_USER_ID,
                         text="⚠️ Нет доступа к групповому чату для отправки отчета",
                         parse_mode="Markdown"
                     )
