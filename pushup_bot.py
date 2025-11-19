@@ -365,6 +365,16 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
+    if not Config.GROUP_CHAT_ID:
+        logger.warning("GROUP_CHAT_ID не указан")
+        if Config.ADMIN_USER_ID:
+            await context.bot.send_message(
+                chat_id=Config.ADMIN_USER_ID,
+                text="⚠️ GROUP_CHAT_ID не указан — отчет не отправлен",
+                parse_mode="Markdown"
+        )
+    return
+
     try:
         report = await generate_report()
         if Config.GROUP_CHAT_ID:
